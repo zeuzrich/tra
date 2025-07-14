@@ -12,6 +12,8 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ canManageMembers })
   const [invitations, setInvitations] = useState<MemberInvitation[]>([]);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSuccess, setInviteSuccess] = useState('');
   const [inviteForm, setInviteForm] = useState({
     email: '',
     permissions: {
@@ -46,8 +48,12 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ canManageMembers })
 
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
+    setInviteError('');
+    setInviteSuccess('');
+    
     try {
       await workspaceService.inviteMember(inviteForm.email, inviteForm.permissions);
+      setInviteSuccess(`Convite enviado com sucesso para ${inviteForm.email}!`);
       setShowInviteForm(false);
       setInviteForm({
         email: '',
@@ -63,7 +69,11 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ canManageMembers })
       loadData();
     } catch (error) {
       console.error('Error inviting member:', error);
-      alert('Erro ao convidar membro. Verifique se o email não foi convidado anteriormente.');
+      if (error.message?.includes('duplicate') || error.message?.includes('already exists')) {
+        setInviteError('Este email já foi convidado. Verifique a lista de convites pendentes.');
+      } else {
+        setInviteError('Erro ao enviar convite. Tente novamente.');
+      }
     }
   };
 
@@ -148,6 +158,25 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ canManageMembers })
           </button>
         )}
       </div>
+
+      {/* Mensagens de Feedback */}
+      {inviteSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+            <p className="text-green-800 font-medium">{inviteSuccess}</p>
+          </div>
+        </div>
+      )}
+
+      {inviteError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <XCircle className="w-5 h-5 text-red-600 mr-2" />
+            <p className="text-red-800 font-medium">{inviteError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Membros Ativos */}
       <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
@@ -246,6 +275,12 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ canManageMembers })
             <h2 className="text-xl font-bold text-gray-900 mb-4">Convidar Novo Membro</h2>
             
             <form onSubmit={handleInviteMember} className="space-y-4">
+              {inviteError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-800 text-sm">{inviteError}</p>
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Email do Membro
@@ -330,7 +365,10 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ canManageMembers })
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowInviteForm(false)}
+                  onClick={() => {
+                    setShowInviteForm(false);
+                    setInviteError('');
+                  }}
                   className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   Cancelar

@@ -262,13 +262,21 @@ function App() {
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-700 mb-2">TrafficFlow Manager</h2>
           <p className="text-gray-500">Carregando aplicação...</p>
+          <div className="mt-4 text-xs text-gray-400">
+            <p>Verificando autenticação e permissões...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   if (!user) {
-    return <LoginForm onSuccess={() => {}} />;
+    return (
+      <Routes>
+        <Route path="/invite/:token" element={<InviteOnboarding />} />
+        <Route path="*" element={<LoginForm onSuccess={() => {}} />} />
+      </Routes>
+    );
   }
 
   // Handle invite routes
