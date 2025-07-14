@@ -7,21 +7,30 @@ export const usePermissions = () => {
   const [permissions, setPermissions] = useState<MemberPermissions>({});
   const [isOwner, setIsOwner] = useState(false);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (user) {
+    if (user && !authLoading) {
+      console.log('usePermissions: Loading permissions for user...');
       loadPermissions();
+    } else if (!authLoading && !user) {
+      console.log('usePermissions: No user, setting default permissions...');
+      setPermissions({});
+      setIsOwner(false);
+      setLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const loadPermissions = async () => {
     try {
+      console.log('usePermissions: Fetching user permissions...');
       const userPermissions = await workspaceService.getUserPermissions();
+      console.log('usePermissions: Permissions loaded:', userPermissions);
+      
       setPermissions(userPermissions.permissions);
       setIsOwner(userPermissions.isOwner);
     } catch (error) {
-      console.error('Error loading permissions:', error);
+      console.error('usePermissions: Error loading permissions:', error);
       // Default to full access for owners if error (fallback)
       setPermissions({ full_access: true });
       setIsOwner(true);
@@ -50,6 +59,8 @@ export const usePermissions = () => {
   const canView = () => {
     return true; // All members can view
   };
+
+  console.log('usePermissions: Current state:', { permissions, isOwner, loading });
 
   return {
     permissions,
