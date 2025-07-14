@@ -2,15 +2,15 @@ import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
 
 // Configuração do Supabase - substitua pelos seus valores reais
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key-here';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vjeillnxklinolsszaki.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqZWlsbG54a2xpbm9sc3N6YWtpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxMjAwNzIsImV4cCI6MjA2NzY5NjA3Mn0.qZMw03kiadXC62Y-pdTcPa3Ks1wPDi7r1kKewRy3m2A';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables. Please configure them in .env file or directly in supabase.ts');
   // Não quebrar a aplicação, mas mostrar erro no console
 }
 
-if (supabaseUrl.includes('your-project') || supabaseAnonKey.includes('your-anon-key')) {
+if (supabaseUrl.includes('https://vjeillnxklinolsszaki.supabase.co') || supabaseAnonKey.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqZWlsbG54a2xpbm9sc3N6YWtpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxMjAwNzIsImV4cCI6MjA2NzY5NjA3Mn0.qZMw03kiadXC62Y-pdTcPa3Ks1wPDi7r1kKewRy3m2A')) {
   console.warn('⚠️ Supabase não configurado! Configure as variáveis de ambiente ou edite src/lib/supabase.ts');
 }
 
