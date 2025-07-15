@@ -15,18 +15,63 @@ export const signUp = async (email: string, password: string) => {
   try {
     console.log('🔐 Attempting to sign up user:', email);
     
+    // First check if user already exists by trying to sign in
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password: 'dummy-password-check'
+    });
+    
+    // If sign in doesn't fail with invalid_credentials, user might exist
+    if (signInError && !signInError.message.includes('Invalid login credentials')) {
+      console.log('🔍 User existence check result:', signInError.message);
+    }
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: undefined, // Desabilitar confirmação por email
+        emailRedirectTo: undefined,
         data: {
-          email_confirm: true // Confirmar email automaticamente
+          email_confirm: true,
+          email: email
         }
       }
     });
     
-    console.log('📝 SignUp result:', { data: !!data, error });
+    console.log('📝 SignUp result:', { 
+      user: !!data?.user, 
+      session: !!data?.session,
+      error: error?.message || 'none'
+    });
+    
+    // Handle specific database errors
+    if (error) {
+      if (error.message.includes('Database error saving new user')) {
+        console.log('🔄 Database error detected, retrying in 2 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Retry once
+        const { data: retryData, error: retryError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: undefined,
+            data: {
+              email_confirm: true,
+              email: email
+            }
+          }
+        });
+        
+        console.log('🔄 Retry result:', { 
+          user: !!retryData?.user, 
+          session: !!retryData?.session,
+          error: retryError?.message || 'none'
+        });
+        
+        return { data: retryData, error: retryError };
+      }
+    }
     
     return { data, error };
   } catch (error) {

@@ -279,55 +279,22 @@ const InviteOnboarding: React.FC = () => {
     try {
       console.log('🏢 Adding user to workspace:', { userId, workspaceId: invitationData.workspace_id });
 
-      // Verificar se o usuário já é membro do workspace
-      const { data: existingMember } = await supabase
-        .from('workspace_members')
-        .select('id')
-        .eq('workspace_id', invitationData.workspace_id)
-        .eq('user_id', userId)
-        .single();
+      // Use the secure function to accept invitation
+      const { data: result, error } = await supabase.rpc('accept_invitation', {
+        invitation_token: token
+      });
 
-      if (existingMember) {
-        console.log('👤 User is already a member of this workspace');
-      } else {
-        // Adicionar usuário ao workspace
-        const { error: memberError } = await supabase
-          .from('workspace_members')
-          .insert({
-            workspace_id: invitationData.workspace_id,
-            user_id: userId,
-            email: invitationData.email,
-            permissions: invitationData.permissions,
-            role: 'member',
-            invited_by: null // Será preenchido pelo trigger se necessário
-          });
-
-        if (memberError) {
-          console.error('❌ Error adding to workspace:', memberError);
-          // Não falhar aqui se for erro de duplicata
-          if (!memberError.message.includes('duplicate') && !memberError.message.includes('already exists')) {
-            throw memberError;
-          }
-        } else {
-          console.log('✅ User added to workspace successfully');
-        }
+      if (error) {
+        console.error('❌ Error accepting invitation:', error);
+        throw error;
       }
 
-      // Marcar convite como aceito
-      const { error: updateError } = await supabase
-        .from('member_invitations')
-        .update({ 
-          accepted_at: new Date().toISOString(),
-          used_at: new Date().toISOString()
-        })
-        .eq('token', token);
-
-      if (updateError) {
-        console.error('⚠️ Error updating invitation (non-critical):', updateError);
-        // Não falhar aqui, pois o usuário já foi criado/adicionado
-      } else {
-        console.log('✅ Invitation marked as accepted');
+      if (!result?.success) {
+        console.error('❌ Invitation acceptance failed:', result?.error);
+        throw new Error(result?.error || 'Failed to accept invitation');
       }
+
+      console.log('✅ Invitation accepted successfully:', result);
 
     } catch (error) {
       console.error('❌ Error in addUserToWorkspace:', error);
