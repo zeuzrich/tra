@@ -13,10 +13,21 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
 // Auth helpers
 export const signUp = async (email: string, password: string) => {
   try {
+    console.log('🔐 Attempting to sign up user:', email);
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: undefined, // Desabilitar confirmação por email
+        data: {
+          email_confirm: true // Confirmar email automaticamente
+        }
+      }
     });
+    
+    console.log('📝 SignUp result:', { data: !!data, error });
+    
     return { data, error };
   } catch (error) {
     console.error('Error in signUp:', error);

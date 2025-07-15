@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, XCircle, Users, Eye, EyeOff, Lock, Mail, AlertTriangle, Shield, LogIn } from 'lucide-react';
-import { supabase, signIn } from '../lib/supabase';
+import { supabase, signIn, signUp } from '../lib/supabase';
 
 interface InvitationData {
   valid: boolean;
@@ -49,7 +49,7 @@ const InviteOnboarding: React.FC = () => {
   const validateInvitation = async () => {
     try {
       setLoading(true);
-      console.log('Validating invitation with token:', token);
+      console.log('🔍 Validating invitation with token:', token);
       
       // Buscar convite na tabela
       const { data: invitation, error } = await supabase
@@ -59,10 +59,10 @@ const InviteOnboarding: React.FC = () => {
         .is('accepted_at', null)
         .single();
 
-      console.log('Invitation query result:', { invitation, error });
+      console.log('📧 Invitation query result:', { invitation, error });
 
       if (error) {
-        console.error('Error fetching invitation:', error);
+        console.error('❌ Error fetching invitation:', error);
         throw new Error('Convite não encontrado ou já foi usado');
       }
 
@@ -79,10 +79,10 @@ const InviteOnboarding: React.FC = () => {
       }
 
       // Verificar se o usuário já existe no Supabase Auth
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      const userExists = authUsers?.users?.some(user => user.email === invitation.email);
+      // Vamos usar uma abordagem mais simples - tentar fazer login
+      const userExists = await checkUserExists(invitation.email);
 
-      console.log('User exists check:', { userExists, email: invitation.email });
+      console.log('👤 User exists check:', { userExists, email: invitation.email });
 
       setInvitationData({
         valid: true,
@@ -102,7 +102,7 @@ const InviteOnboarding: React.FC = () => {
       }
       
     } catch (error: any) {
-      console.error('Error validating invitation:', error);
+      console.error('❌ Error validating invitation:', error);
       setInvitationData({
         valid: false,
         error: 'validation_failed',
@@ -111,6 +111,33 @@ const InviteOnboarding: React.FC = () => {
       setStep('error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkUserExists = async (email: string): Promise<boolean> => {
+    try {
+      // Tentar fazer login com uma senha temporária para verificar se o usuário existe
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: 'temp-password-check-123'
+      });
+      
+      // Se o erro for "Invalid login credentials", o usuário existe mas a senha está errada
+      // Se o erro for "Email not confirmed" ou similar, o usuário existe
+      if (error) {
+        if (error.message.includes('Invalid login credentials') || 
+            error.message.includes('Email not confirmed') ||
+            error.message.includes('Invalid email or password')) {
+          return true;
+        }
+        return false;
+      }
+      
+      // Se não houve erro, o usuário existe e a senha estava correta (improvável)
+      return true;
+    } catch (error) {
+      console.log('🔍 User existence check error (expected):', error);
+      return false;
     }
   };
 
@@ -162,60 +189,25 @@ const InviteOnboarding: React.FC = () => {
     setErrors([]);
     
     try {
-      console.log('Attempting login for existing user:', invitationData.email);
+      console.log('🔐 Attempting login for existing user:', invitationData.email);
       
       // Fazer login com credenciais existentes
-      const { error: loginError } = await signIn(invitationData.email, formData.loginPassword);
+      const { data: authData, error: loginError } = await signIn(invitationData.email, formData.loginPassword);
       
       if (loginError) {
         throw new Error('Senha incorreta. Verifique suas credenciais.');
       }
 
-      // Obter o usuário autenticado
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !user) {
-        throw new Error('Erro ao obter dados do usuário');
+      if (!authData.user) {
+        throw new Error('Erro ao fazer login');
       }
 
-      console.log('User logged in successfully, adding to workspace');
+      console.log('✅ User logged in successfully, adding to workspace');
 
       // Adicionar usuário ao workspace
-      const { error: memberError } = await supabase
-        .from('workspace_members')
-        .insert({
-          workspace_id: invitationData.workspace_id,
-          user_id: user.id,
-          email: invitationData.email,
-          permissions: invitationData.permissions,
-          role: 'member'
-        });
-
-      if (memberError) {
-        console.error('Error adding to workspace:', memberError);
-        // Não falhar aqui se o usuário já for membro
-        if (!memberError.message.includes('duplicate')) {
-          throw memberError;
-        }
-      }
-
-      console.log('Marking invitation as accepted');
-
-      // Marcar convite como aceito
-      const { error: updateError } = await supabase
-        .from('member_invitations')
-        .update({ 
-          accepted_at: new Date().toISOString(),
-          used_at: new Date().toISOString()
-        })
-        .eq('token', token);
-
-      if (updateError) {
-        console.error('Error updating invitation:', updateError);
-        // Não falhar aqui, pois o usuário já foi adicionado
-      }
-
-      console.log('Login and workspace addition successful');
+      await addUserToWorkspace(authData.user.id, invitationData);
+      
+      console.log('✅ Login and workspace addition successful');
       setStep('success');
       
       // Redirecionar para o app após 2 segundos
@@ -224,7 +216,7 @@ const InviteOnboarding: React.FC = () => {
       }, 2000);
       
     } catch (error: any) {
-      console.error('Error during login:', error);
+      console.error('❌ Error during login:', error);
       setErrors([error.message || 'Erro ao fazer login. Verifique sua senha.']);
     } finally {
       setLoading(false);
@@ -255,49 +247,103 @@ const InviteOnboarding: React.FC = () => {
     setErrors([]);
     
     try {
-      console.log('Creating account for:', invitationData.email);
+      console.log('👤 Creating account for:', invitationData.email);
       
       // Criar usuário no Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: invitationData.email,
-        password: formData.password,
-        options: {
-          emailRedirectTo: undefined // Desabilitar confirmação por email
-        }
-      });
+      const { data: authData, error: authError } = await signUp(invitationData.email, formData.password);
 
-      console.log('Auth signup result:', { authData, authError });
+      console.log('📝 Auth signup result:', { authData, authError });
 
       if (authError) {
-        if (authError.message.includes('already_registered') || authError.message.includes('already been registered')) {
+        console.error('❌ Auth error:', authError);
+        
+        if (authError.message?.includes('User already registered') || 
+            authError.message?.includes('already_registered') || 
+            authError.message?.includes('already been registered')) {
           throw new Error('Este email já está registrado. Use a opção de login.');
         }
-        throw authError;
+        
+        if (authError.message?.includes('Database error saving new user')) {
+          throw new Error('Erro no banco de dados. Tente novamente em alguns segundos.');
+        }
+        
+        throw new Error(authError.message || 'Erro ao criar conta');
       }
 
       if (!authData.user) {
-        throw new Error('Erro ao criar usuário');
+        throw new Error('Erro ao criar usuário - dados não retornados');
       }
 
-      console.log('User created, adding to workspace');
+      console.log('✅ User created successfully:', authData.user.id);
+
+      // Aguardar um pouco para garantir que o usuário foi criado no banco
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Adicionar usuário ao workspace
-      const { error: memberError } = await supabase
-        .from('workspace_members')
-        .insert({
-          workspace_id: invitationData.workspace_id,
-          user_id: authData.user.id,
-          email: invitationData.email,
-          permissions: invitationData.permissions,
-          role: 'member'
-        });
+      await addUserToWorkspace(authData.user.id, invitationData);
 
-      if (memberError) {
-        console.error('Error adding to workspace:', memberError);
-        // Não falhar aqui, pois o usuário já foi criado
+      console.log('✅ Account creation and workspace addition successful');
+      setStep('success');
+      
+      // Redirecionar para o app após 2 segundos
+      setTimeout(() => {
+        navigate('/');
+      }, 2000);
+      
+    } catch (error: any) {
+      console.error('❌ Error creating account:', error);
+      
+      if (error.message?.includes('already_registered') || error.message?.includes('already been registered')) {
+        setErrors(['Este email já está registrado. Use a opção de login acima.']);
+      } else if (error.message?.includes('invalid_email')) {
+        setErrors(['Email inválido.']);
+      } else if (error.message?.includes('Database error')) {
+        setErrors(['Erro no banco de dados. Aguarde alguns segundos e tente novamente.']);
+      } else {
+        setErrors([error.message || 'Erro ao criar conta. Tente novamente.']);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      console.log('Marking invitation as accepted');
+  const addUserToWorkspace = async (userId: string, invitationData: InvitationData) => {
+    try {
+      console.log('🏢 Adding user to workspace:', { userId, workspaceId: invitationData.workspace_id });
+
+      // Verificar se o usuário já é membro do workspace
+      const { data: existingMember } = await supabase
+        .from('workspace_members')
+        .select('id')
+        .eq('workspace_id', invitationData.workspace_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (existingMember) {
+        console.log('👤 User is already a member of this workspace');
+      } else {
+        // Adicionar usuário ao workspace
+        const { error: memberError } = await supabase
+          .from('workspace_members')
+          .insert({
+            workspace_id: invitationData.workspace_id,
+            user_id: userId,
+            email: invitationData.email,
+            permissions: invitationData.permissions,
+            role: 'member',
+            invited_by: null // Será preenchido pelo trigger se necessário
+          });
+
+        if (memberError) {
+          console.error('❌ Error adding to workspace:', memberError);
+          // Não falhar aqui se for erro de duplicata
+          if (!memberError.message.includes('duplicate') && !memberError.message.includes('already exists')) {
+            throw memberError;
+          }
+        } else {
+          console.log('✅ User added to workspace successfully');
+        }
+      }
 
       // Marcar convite como aceito
       const { error: updateError } = await supabase
@@ -309,30 +355,15 @@ const InviteOnboarding: React.FC = () => {
         .eq('token', token);
 
       if (updateError) {
-        console.error('Error updating invitation:', updateError);
-        // Não falhar aqui, pois o usuário já foi criado
+        console.error('⚠️ Error updating invitation (non-critical):', updateError);
+        // Não falhar aqui, pois o usuário já foi criado/adicionado
+      } else {
+        console.log('✅ Invitation marked as accepted');
       }
 
-      console.log('Account creation successful');
-      setStep('success');
-      
-      // Redirecionar para o app após 2 segundos
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
-      
-    } catch (error: any) {
-      console.error('Error creating account:', error);
-      
-      if (error.message?.includes('already_registered') || error.message?.includes('already been registered')) {
-        setErrors(['Este email já está registrado. Use a opção de login acima.']);
-      } else if (error.message?.includes('invalid_email')) {
-        setErrors(['Email inválido.']);
-      } else {
-        setErrors([error.message || 'Erro ao criar conta. Tente novamente.']);
-      }
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('❌ Error in addUserToWorkspace:', error);
+      throw error;
     }
   };
 
