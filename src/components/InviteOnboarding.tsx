@@ -12,7 +12,6 @@ interface InvitationData {
   expires_at?: string;
   error?: string;
   message?: string;
-  user_exists?: boolean;
 }
 
 const InviteOnboarding: React.FC = () => {
@@ -78,11 +77,7 @@ const InviteOnboarding: React.FC = () => {
         throw new Error('Este convite expirou');
       }
 
-      // Verificar se o usuário já existe no Supabase Auth
-      // Vamos usar uma abordagem mais simples - tentar fazer login
-      const userExists = await checkUserExists(invitation.email);
-
-      console.log('👤 User exists check:', { userExists, email: invitation.email });
+      console.log('✅ Invitation is valid, proceeding to create password step');
 
       setInvitationData({
         valid: true,
@@ -90,16 +85,12 @@ const InviteOnboarding: React.FC = () => {
         email: invitation.email,
         workspace_id: invitation.workspace_id,
         permissions: invitation.permissions,
-        expires_at: invitation.expires_at,
-        user_exists: userExists
+        expires_at: invitation.expires_at
       });
 
-      // Se o usuário já existe, mostrar tela de login
-      if (userExists) {
-        setStep('login-existing');
-      } else {
-        setStep('create-password');
-      }
+      // Sempre começar com a tela de criar senha
+      // Se o usuário já existir, descobriremos durante a tentativa de criação
+      setStep('create-password');
       
     } catch (error: any) {
       console.error('❌ Error validating invitation:', error);
@@ -111,33 +102,6 @@ const InviteOnboarding: React.FC = () => {
       setStep('error');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const checkUserExists = async (email: string): Promise<boolean> => {
-    try {
-      // Tentar fazer login com uma senha temporária para verificar se o usuário existe
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: 'temp-password-check-123'
-      });
-      
-      // Se o erro for "Invalid login credentials", o usuário existe mas a senha está errada
-      // Se o erro for "Email not confirmed" ou similar, o usuário existe
-      if (error) {
-        if (error.message.includes('Invalid login credentials') || 
-            error.message.includes('Email not confirmed') ||
-            error.message.includes('Invalid email or password')) {
-          return true;
-        }
-        return false;
-      }
-      
-      // Se não houve erro, o usuário existe e a senha estava correta (improvável)
-      return true;
-    } catch (error) {
-      console.log('🔍 User existence check error (expected):', error);
-      return false;
     }
   };
 
@@ -247,9 +211,9 @@ const InviteOnboarding: React.FC = () => {
     setErrors([]);
     
     try {
-      console.log('👤 Creating account for:', invitationData.email);
+      console.log('👤 Attempting to create account for:', invitationData.email);
       
-      // Criar usuário no Supabase Auth
+      // Tentar criar usuário no Supabase Auth
       const { data: authData, error: authError } = await signUp(invitationData.email, formData.password);
 
       console.log('📝 Auth signup result:', { authData, authError });
@@ -257,10 +221,16 @@ const InviteOnboarding: React.FC = () => {
       if (authError) {
         console.error('❌ Auth error:', authError);
         
+        // Se o usuário já existe, redirecionar para login
         if (authError.message?.includes('User already registered') || 
             authError.message?.includes('already_registered') || 
-            authError.message?.includes('already been registered')) {
-          throw new Error('Este email já está registrado. Use a opção de login.');
+            authError.message?.includes('already been registered') ||
+            authError.message?.includes('Email address is already registered')) {
+          
+          console.log('👤 User already exists, switching to login flow');
+          setStep('login-existing');
+          setErrors(['Este email já possui uma conta. Por favor, faça login com sua senha existente.']);
+          return; // Parar aqui e deixar o usuário fazer login
         }
         
         if (authError.message?.includes('Database error saving new user')) {
@@ -293,12 +263,10 @@ const InviteOnboarding: React.FC = () => {
     } catch (error: any) {
       console.error('❌ Error creating account:', error);
       
-      if (error.message?.includes('already_registered') || error.message?.includes('already been registered')) {
-        setErrors(['Este email já está registrado. Use a opção de login acima.']);
+      if (error.message?.includes('Database error')) {
+        setErrors(['Erro no banco de dados. Aguarde alguns segundos e tente novamente.']);
       } else if (error.message?.includes('invalid_email')) {
         setErrors(['Email inválido.']);
-      } else if (error.message?.includes('Database error')) {
-        setErrors(['Erro no banco de dados. Aguarde alguns segundos e tente novamente.']);
       } else {
         setErrors([error.message || 'Erro ao criar conta. Tente novamente.']);
       }
@@ -444,7 +412,7 @@ const InviteOnboarding: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold text-green-800 mb-2">Bem-vindo ao Workspace!</h1>
           <p className="text-gray-600 mb-4">
-            {invitationData?.user_exists ? 
+            {step === 'login-existing' ? 
               'Você foi adicionado ao workspace com sucesso.' :
               'Sua conta foi criada e você foi adicionado ao workspace.'
             }
@@ -531,7 +499,7 @@ const InviteOnboarding: React.FC = () => {
                 <div className="flex items-start">
                   <AlertTriangle className="w-5 h-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" />
                   <div>
-                    <h4 className="text-red-800 font-medium mb-1">Erro no login:</h4>
+                    <h4 className="text-red-800 font-medium mb-1">Informação:</h4>
                     <ul className="text-red-700 text-sm space-y-1">
                       {errors.map((error, index) => (
                         <li key={index}>• {error}</li>
@@ -560,12 +528,12 @@ const InviteOnboarding: React.FC = () => {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
-              Não lembra sua senha?{' '}
+              Quer tentar criar uma nova conta?{' '}
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => setStep('create-password')}
                 className="text-blue-600 hover:text-blue-700 font-medium"
               >
-                Ir para tela de login
+                Voltar para criar senha
               </button>
             </p>
           </div>
