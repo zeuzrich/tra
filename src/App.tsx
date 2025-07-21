@@ -1,27 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { BarChart3, Target, DollarSign, Menu, X, Package, LogOut, Users } from 'lucide-react';
+import { Routes, Route } from 'react-router-dom';
+import { BarChart3, Target, DollarSign, Menu, X, Package, LogOut } from 'lucide-react';
 import { Test, FinancialData, Transaction, Offer } from './types';
 import { calculateMetrics } from './utils/calculations';
 import { signOut } from './lib/supabase';
 import { useAuth } from './hooks/useAuth';
-import { usePermissions } from './hooks/usePermissions';
 import { offersService, testsService, financialService } from './services/supabaseService';
 import Dashboard from './components/Dashboard';
 import TestModule from './components/TestModule';
 import FinancialModule from './components/FinancialModule';
 import OfferModule from './components/OfferModule';
-import MemberManagement from './components/MemberManagement';
-import InviteOnboarding from './components/InviteOnboarding';
 import LoginForm from './components/Auth/LoginForm';
 
-type ActiveModule = 'dashboard' | 'tests' | 'financial' | 'offers' | 'members';
+type ActiveModule = 'dashboard' | 'tests' | 'financial' | 'offers';
 
 function App() {
   console.log('App component rendering...');
   
   const { user, loading: authLoading } = useAuth();
-  const { permissions, isOwner, loading: permissionsLoading, canEdit } = usePermissions();
   const [tests, setTests] = useState<Test[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [financial, setFinancial] = useState<FinancialData>({
@@ -36,7 +32,7 @@ function App() {
   const [activeModule, setActiveModule] = useState<ActiveModule>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  console.log('App state:', { user: !!user, authLoading, permissionsLoading, loading });
+  console.log('App state:', { user: !!user, authLoading, loading });
 
   // Load data when user is authenticated
   useEffect(() => {
@@ -234,12 +230,11 @@ function App() {
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'tests', label: 'Testes', icon: Target },
     { id: 'offers', label: 'Ofertas', icon: Package },
-    { id: 'financial', label: 'Financeiro', icon: DollarSign },
-    { id: 'members', label: 'Membros', icon: Users }
+    { id: 'financial', label: 'Financeiro', icon: DollarSign }
   ];
 
   const renderActiveModule = () => {
-    if (loading || permissionsLoading) {
+    if (loading) {
       return (
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -256,8 +251,6 @@ function App() {
         return <OfferModule offers={offers} tests={tests} onAddOffer={handleAddOffer} onUpdateOffer={handleUpdateOffer} onDeleteOffer={handleDeleteOffer} />;
       case 'financial':
         return <FinancialModule financial={financial} onUpdateFinancial={handleUpdateFinancial} />;
-      case 'members':
-        return <MemberManagement canManageMembers={canEdit('members')} />;
       default:
         return <Dashboard tests={tests} offers={offers} metrics={metrics} />;
     }
@@ -281,59 +274,102 @@ function App() {
   if (!user) {
     console.log('User not authenticated, showing routes...');
     return (
-      <Routes>
-        <Route path="/invite/:token" element={<InviteOnboarding />} />
-        <Route path="/login" element={<LoginForm onSuccess={() => window.location.reload()} />} />
-        <Route path="*" element={<LoginForm onSuccess={() => window.location.reload()} />} />
-      </Routes>
+      <LoginForm onSuccess={() => window.location.reload()} />
     );
   }
 
   // Authenticated user - show main app
   console.log('User authenticated, showing main app...');
-  
-  if (permissionsLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">TrafficFlow Manager</h2>
-          <p className="text-gray-500">Configurando permissões...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <Routes>
-      <Route path="/invite/:token" element={<InviteOnboarding />} />
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="*" element={
-        <div className="min-h-screen bg-gray-50">
-          {/* Mobile menu button */}
-          <div className="lg:hidden fixed top-4 left-4 z-50">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Mobile menu button */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="p-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+      </div>
 
-          {/* Sidebar */}
-          <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out ${
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } lg:translate-x-0`}>
-            <div className="flex flex-col h-full">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-600 rounded-lg">
-                    <Target className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-lg font-bold text-gray-900">TrafficFlow</h1>
-                    <p className="text-sm text-gray-500">Manager Pro</p>
-                  </div>
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0`}>
+        <div className="flex flex-col h-full">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <Target className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">TrafficFlow</h1>
+                <p className="text-sm text-gray-500">Manager Pro</p>
+              </div>
+            </div>
+          </div>
+          
+          <nav className="flex-1 p-4 space-y-2">
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveModule(item.id as ActiveModule);
+                  setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  activeModule === item.id
+                    ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                <span className="font-medium">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+          
+          <div className="p-4 border-t border-gray-200">
+            <div className="mb-4">
+              <p className="text-sm text-gray-600">Logado como:</p>
+              <p className="text-sm font-medium text-gray-900 truncate">{user?.email}</p>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-sm font-medium">Sair</span>
+            </button>
+            <div className="text-center text-sm text-gray-500 mt-4">
+              <p>Versão 1.2.0</p>
+              <p className="mt-1">© 2025 TrafficFlow</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="lg:ml-64">
+        <div className="p-6 lg:p-8 pt-16 lg:pt-8">
+          {renderActiveModule()}
+        </div>
+      </div>
+
+      {/* Overlay for mobile */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;
+
                 </div>
               </div>
               

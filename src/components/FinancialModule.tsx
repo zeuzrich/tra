@@ -4,7 +4,9 @@ import { FinancialData, Transaction } from '../types';
 import { formatCurrency } from '../utils/calculations';
 import { exportFinancialToCSV } from '../utils/export';
 import { parseCurrencyInput, createCurrencyInputProps } from '../utils/currency';
-import { usePermissions } from '../hooks/usePermissions';
+import { formatDateToBrazilianTime } from '../utils/dateUtils';
+import { useAuth } from '../hooks/useAuth';
+import { signIn } from '../lib/supabase';
 
 interface FinancialModuleProps {
   financial: FinancialData;
@@ -12,9 +14,13 @@ interface FinancialModuleProps {
 }
 
 const FinancialModule: React.FC<FinancialModuleProps> = ({ financial, onUpdateFinancial }) => {
-  const { canEdit } = usePermissions();
+  const { user } = useAuth();
   const [showCapitalForm, setShowCapitalForm] = useState(false);
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
   const [capitalAmount, setCapitalAmount] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionForm, setTransactionForm] = useState({
     type: 'expense' as const,
@@ -22,18 +28,51 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ financial, onUpdateFi
     description: ''
   });
 
+  const handleConfirmUpdateCapital = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user?.email) {
+      setAuthError('Usuário não encontrado');
+      return;
+    }
+    
+    setLoading(true);
+    setAuthError('');
+    
+    try {
+      // Verificar senha do usuário
+      const { error: loginError } = await signIn(user.email, passwordInput);
+      
+      if (loginError) {
+        throw new Error('Senha incorreta. Verifique suas credenciais.');
+      }
+      
+      // Se a senha estiver correta, atualizar o capital
+      const amount = parseCurrencyInput(capitalAmount);
+      if (amount > 0) {
+        const netProfit = financial.totalRevenue - financial.totalInvestment;
+        onUpdateFinancial({
+          initialCapital: amount,
+          currentBalance: amount + netProfit
+        });
+        
+        // Resetar formulários
+        setShowPasswordConfirmation(false);
+        setShowCapitalForm(false);
+        setCapitalAmount('');
+        setPasswordInput('');
+      }
+    } catch (error: any) {
+      setAuthError(error.message || 'Erro ao verificar senha');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateCapital = (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = parseCurrencyInput(capitalAmount);
-    if (amount > 0) {
-      const netProfit = financial.totalRevenue - financial.totalInvestment;
-      onUpdateFinancial({
-        initialCapital: amount,
-        currentBalance: amount + netProfit
-      });
-      setShowCapitalForm(false);
-      setCapitalAmount('');
-    }
+    // Agora pede confirmação de senha
+    setShowPasswordConfirmation(true);
   };
 
   const handleAddTransaction = (e: React.FormEvent) => {
@@ -98,14 +137,12 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ financial, onUpdateFi
             <div className="p-3 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600">
               <DollarSign className="w-6 h-6 text-white" />
             </div>
-            {canEdit('financial') && (
-              <button
-                onClick={() => setShowCapitalForm(true)}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Atualizar
-              </button>
-            )}
+            <button
+              onClick={() => setShowCapitalForm(true)}
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              Atualizar
+            </button>
           </div>
           <h3 className="text-sm font-medium text-gray-600 mb-1">Capital Inicial</h3>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(financial.initialCapital)}</p>
@@ -158,14 +195,12 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ financial, onUpdateFi
       <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Fluxo de Caixa</h3>
-          {canEdit('financial') && (
-            <button
-              onClick={() => setShowTransactionForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Nova Transação
-            </button>
-          )}
+          <button
+            onClick={() => setShowTransactionForm(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Nova Transação
+          </button>
         </div>
 
         <div className="space-y-3">
@@ -180,7 +215,7 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ financial, onUpdateFi
                 <div>
                   <p className="font-medium text-gray-900">{transaction.description}</p>
                   <p className="text-sm text-gray-500">
-                    {new Date(transaction.date).toLocaleDateString('pt-BR')}
+                    {formatDateToBrazilianTime(transaction.date)}
                   </p>
                 </div>
               </div>
@@ -233,6 +268,60 @@ const FinancialModule: React.FC<FinancialModuleProps> = ({ financial, onUpdateFi
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   Atualizar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showPasswordConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Confirmar Senha</h2>
+            <p className="text-gray-600 mb-4">
+              Por segurança, confirme sua senha para atualizar o capital inicial.
+            </p>
+            
+            <form onSubmit={handleConfirmUpdateCapital}>
+              {authError && (
+                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-800 text-sm">{authError}</p>
+                </div>
+              )}
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Sua Senha
+                </label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Digite sua senha"
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordConfirmation(false);
+                    setPasswordInput('');
+                    setAuthError('');
+                  }}
+                  className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Verificando...' : 'Confirmar'}
                 </button>
               </div>
             </form>
